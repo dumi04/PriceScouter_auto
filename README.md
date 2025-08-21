@@ -23,10 +23,6 @@ IF – Price ≤ Threshold?
 YES → Sends Telegram alert
 NO → Sends Gmail message with the current price
 
-📊 Google Sheet Structure
-LINK (Product URL)	            |        PRICE (Threshold)
-https://example.com/product     |                     3500
-
 Clone this repo or import the .json workflow into n8n
 Configure OAuth2 credentials for:
 Google Sheets
