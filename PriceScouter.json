@@ -1,0 +1,298 @@
+{
+  "name": "PriceScouter",
+  "nodes": [
+    {
+      "parameters": {
+        "triggerTimes": {
+          "item": [
+            {
+              "mode": "everyX"
+            }
+          ]
+        }
+      },
+      "id": "c2f7e499-48e3-4019-a02b-742f1ccd519f",
+      "name": "Cron",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [
+        -2380,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "productUrl",
+              "value": "={{ $json.LINK }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "115e354d-345c-47ae-ba41-daf97385748b",
+      "name": "Set – Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [
+        -1720,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "extractionValues": {
+          "values": [
+            {
+              "key": "priceSpan",
+              "cssSelector": "#product-price"
+            },
+            {
+              "key": "productName",
+              "cssSelector": "#product-name"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "00b0c8ac-c8b5-409b-892f-c6fb7b39e02e",
+      "name": "HTML Extract – Price",
+      "type": "n8n-nodes-base.htmlExtract",
+      "typeVersion": 1,
+      "position": [
+        -1220,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{ $json.priceRaw }}",
+              "value2": "={{ $('Get row(s) in sheet').item.json.PRET }}"
+            }
+          ]
+        }
+      },
+      "id": "991bbf38-7e34-4ab3-9059-8a1b34e8bd04",
+      "name": "IF – Price ≤ Threshold?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        -700,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "YOUR_CHAT_ID",
+        "text": "=Pret redus la  {{ $('Code – Normalize & Compare').item.json.productName }}, produsul a ajuns la pretul de : {{ $('Code – Normalize & Compare').item.json.price }} lei",
+        "additionalFields": {}
+      },
+      "id": "32118467-3306-4ffc-b2b4-c58081a51f80",
+      "name": "Telegram – Alert",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [
+        -460,
+        -40
+      ],
+      "webhookId": "fd48b9f4-a262-47aa-ab39-b87a93b0acf7",
+      "credentials": {
+        "telegramApi": {
+          "id": "someid",
+          "name": "Telegram account 3"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.LINK }}",
+        "options": {
+          "batching": {
+            "batch": {}
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1480,
+        80
+      ],
+      "id": "e5b70d89-ddc0-44fa-b241-01c5cc6e345b",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "jsCode": "// Normalize & Compare for CEL.ro price pages\n// Inputs: productUrl, threshold; optional: productName, priceSpan, html/body\nconst items = $input.all();\nconst out = [];\n\nfor (const [index, item] of items.entries()) {\n  const j = item.json || {};\n  const url = j.productUrl || '';\n  const threshold = Number(j.threshold);\n  const name = (j.productName || '').toString().trim();\n\n  let raw = (j.priceSpan ?? j.price ?? '').toString().trim();\n  let html = j.html || j.body || '';\n\n  // Fallback: ia body din nodul „HTTP Request – CEL Page”, dacă există\n  if (!html) {\n    try {\n      const prev = $items('HTTP Request – CEL Page', 0, 0);\n      if (prev?.[0]?.json?.body) html = String(prev[0].json.body);\n    } catch (_) {}\n  }\n\n  if (!raw && html) {\n    let m = html.match(/id=['\"]product-price['\"][^>]*>([0-9.,]+)/i);\n    if (m) raw = m[1];\n    if (!raw) {\n      m = html.match(/value\\s*[:=]\\s*['\"]?([0-9.,]+)['\"]?/i);\n      if (m) raw = m[1];\n    }\n  }\n\n  const cleaned = String(raw)\n    .replace(/\\s+/g, '')\n    .replace(/lei|ron/gi, '')\n    .replace(/\\.(?=\\d{3}(\\D|$))/g, '')\n    .replace(/,(?=\\\\d{1,2}$)/, '.');\n\n  const price = parseFloat(cleaned);\n  const shouldAlert = Number.isFinite(price) && Number.isFinite(threshold) && price <= threshold;\n\n  out.push({\n    json: {\n      productUrl: url,\n      productName: name || 'Produs CEL.ro',\n      priceRaw: raw || null,\n      price,\n      threshold,\n      shouldAlert\n    }\n  });\n}\n\nreturn out;"
+      },
+      "id": "b2a7090d-9751-4c62-9067-b6689537d5f0",
+      "name": "Code – Normalize & Compare",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        -960,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "example@gmail.com",
+        "subject": "={{ $json.productName }} este la pretul de {{ $json.price }} lei",
+        "message": "={{ $json.productName }} este la pretul de lei",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        -460,
+        180
+      ],
+      "id": "02a2267b-c5f5-4a1f-ad98-22b11ceaa0bc",
+      "name": "Send a message",
+      "webhookId": "6321d919-6161-47b9-9868-c72a97c9ccd8",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "EaIDuDbMJhRAh30e",
+          "name": "Gmail account 12"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "spreadsheet_id",
+          "mode": "list",
+          "cachedResultName": "PRICE_SCOUTER",
+          "cachedResultUrl": "spreadsheet_URL"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Foaie1",
+          "cachedResultUrl": "spreadsheet_URL"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.6,
+      "position": [
+        -2040,
+        80
+      ],
+      "id": "8e06d43d-77d0-4abf-b67b-53eb87854eb8",
+      "name": "Get row(s) in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "someid",
+          "name": "Google Sheets account 19"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Cron": {
+      "main": [
+        [
+          {
+            "node": "Get row(s) in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF – Price ≤ Threshold?": {
+      "main": [
+        [
+          {
+            "node": "Telegram – Alert",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set – Config": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "HTML Extract – Price",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTML Extract – Price": {
+      "main": [
+        [
+          {
+            "node": "Code – Normalize & Compare",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code – Normalize & Compare": {
+      "main": [
+        [
+          {
+            "node": "IF – Price ≤ Threshold?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get row(s) in sheet": {
+      "main": [
+        [
+          {
+            "node": "Set – Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "c4b276bf-4d66-4827-8e38-eca9bad89b9b",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "-"
+  },
+  "id": "someid",
+  "tags": []
+}
